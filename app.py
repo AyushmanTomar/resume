@@ -10,7 +10,7 @@ import time
 import io
 
 # --- Page configuration ---
-st.set_page_config(page_title="Resume Job Match Analyzer", layout="wide")
+st.set_page_config(page_title="ByeResume - Ayushman Tomar", layout="wide")
 
 # --- App title and description ---
 st.title("Resume & GitHub Job Match Analyzer")
@@ -277,7 +277,7 @@ with st.sidebar:
     st.header("📄 Data Previews")
 
     # Toggle to show GitHub data
-    if st.checkbox("Preview Fetched GitHub Projects", key="show_github_sidebar"):
+    if st.checkbox("Preview Fetched GitHub Projects", key="show_github_sidebar",help="Backend uses readme.md files of github repositories for appropriate analysis, so make sure you have given the access to the files in your access token"):
         current_gh_username = st.session_state.get("github_username")
         current_gh_token = st.session_state.get("github_pat")
         if current_gh_username:
@@ -466,3 +466,5 @@ st.markdown("""
 4.  Fill in the **Job Details** and paste the **Job Description**.
 5.  Click "**Analyze Job Match**" for tailored recommendations.
 """)
+
+st.markdown("<p style='text-align: center; margin-top:200px;'>© 2025 Ayushman Tomar</p>", unsafe_allow_html=True)
