@@ -342,6 +342,72 @@ else:
         st.session_state.uploaded_resume_content = None
         st.session_state.uploaded_resume_filename = None
 
+# with st.form("Asnwer on your behalf"):
+#     st.subheader("Answer application questions with precision")
+#     question_input = st.text_input("Question asked",
+#                st.session_state.get("question", ""),                    
+#             help="E.g., 'Where do you see yourself in next 2 years ?', 'Why we should hire you ?'")
+#     ask_question_btn = st.form_submit_button("Answer on my Behalf")
+
+
+
+def answer_with_gemini(github_data, resume_text, question,job_role,Company_name,job_description):
+    """Sends data to Gemini API for analysis and returns the response text."""
+    try:
+        api_key = st.session_state.get("gemini_api_key")
+        if not api_key:
+            st.error("Gemini API key is missing. Please add it in the sidebar.")
+            return "Error: Gemini API key is missing."
+
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-1.5-flash-latest', generation_config={"temperature": 0.1})
+
+        prompt = f"""## Task: Provide answer to the question asked by the recruiter on behalf of job applicant based on resume, GitHub projects, and job description of the applicant.
+
+        You are an AI assistant specialized in resume optimization and job application strategy. Analyze the provided resume content, GitHub project information (limited to name, description, and README), and job description to provide highly relevant and actionable advice.
+
+        ### Resume Content:
+        ```
+        {resume_text}
+        ```
+
+        ### GitHub Projects (Name, Description, and README excerpts):
+
+        {json.dumps(github_data, indent=2)}
+
+        ### Job Role:
+        {job_role}
+
+        ### Company Name
+
+        {Company_name}
+
+
+        ### Job description
+
+        {job_description}
+
+        Question asked by the recruiter(Answer this question on candidate's behalf taking reference of his github and resume as knowledge base): 
+
+        {question}
+        """
+        response = model.generate_content(prompt)
+        return response.text
+    except Exception as e:
+        st.error(f"Error analyzing with Gemini: {type(e).__name__} - {str(e)}")
+        if "API key not valid" in str(e):
+            st.error("Invalid Gemini API Key. Please check the key in the sidebar.")
+        elif "quota" in str(e).lower():
+             st.error("Quota exceeded for Gemini API. Check your usage limits or try again later.")
+        elif "blocked" in str(e).lower():
+             st.error("Content was blocked by the Gemini API safety filters. Please review inputs.")
+        return f"An error occurred during Gemini analysis: {str(e)}"
+
+
+
+
+
+
 
 # --- Form for job details ---
 with st.form("job_details_form"):
@@ -366,6 +432,106 @@ with st.form("job_details_form"):
         help="Copy and paste the complete job description from the job posting"
     )
     submit_button = st.form_submit_button("🚀 Analyze Job Match")
+    question_input = st.text_input("Question asked",
+               st.session_state.get("question", ""),                    
+            help="E.g., 'Where do you see yourself in next 2 years ?', 'Why we should hire you ?'")
+    ask_question_btn = st.form_submit_button("Answer on my Behalf")
+
+
+if ask_question_btn:
+    st.session_state.question=question_input
+    st.session_state.job_role = job_role_input
+    st.session_state.company_name = company_name_input
+    st.session_state.job_description = job_description_input
+    valid_inputs = True
+    if not st.session_state.get("question"):
+        st.error("❗ Please enter your Question.")
+        valid_inputs=False
+    
+    if not st.session_state.get("gemini_api_key"):
+        st.error("❗ Please enter your Gemini API Key in the sidebar.")
+        valid_inputs = False
+    # Get resume content (only from uploaded file now)
+    resume_text_main, resume_source = get_resume_content()
+    if not resume_text_main and resume_source != "error":
+        st.error("❗ No resume found. Please upload a 'resume.txt' file.")
+        valid_inputs = False
+    elif resume_source == "error":
+        # Error message already shown by get_resume_content
+        valid_inputs = False
+    elif resume_source == "upload":
+         st.info(f"✅ Using uploaded resume: '{st.session_state.uploaded_resume_filename}' for analysis.")
+          # Job details validation
+    if not job_role_input:
+        st.error("❗ Please enter the Job Position/Title.")
+        valid_inputs = False
+    if not company_name_input:
+        st.error("❗ Please enter the Company Name.")
+        valid_inputs = False
+    if not job_description_input:
+        st.error("❗ Please enter a Job Description.")
+        valid_inputs = False
+
+    # Optional GitHub username validation (warning, not blocking)
+    github_username_to_fetch = st.session_state.get("github_username")
+    if not github_username_to_fetch:
+        st.warning("⚠️ GitHub Username is not entered. Analysis will proceed without GitHub project data.")
+
+   
+
+    if valid_inputs:
+        progress_bar_main = st.progress(0, text="⏳ Starting analysis...")
+        status_text_main = st.empty()
+
+        # Step 1: Fetch GitHub data (only if username provided)
+        github_data_main = []
+        if github_username_to_fetch:
+            status_text_main.text(f"📡 Fetching GitHub repositories for '{github_username_to_fetch}'...")
+            progress_bar_main.progress(25, text=f"📡 Fetching GitHub repositories...")
+            # Pass the token from session state if available
+            @st.cache_data(ttl=600) # Cache for 10 minutes
+            def cached_fetch_github_repos(username, token):
+                return fetch_github_repos(username, token)
+            github_data_main = cached_fetch_github_repos(github_username_to_fetch,st.session_state.get("github_pat"))
+            if not github_data_main:
+                print("using non cached repo data")
+                github_data_main = fetch_github_repos(
+                    github_username_to_fetch,
+                    st.session_state.get("github_pat")
+                )
+            # fetch_github_repos handles its own errors/warnings
+        else:
+             status_text_main.text("ℹ️ Skipping GitHub repository fetch (no username provided).")
+             progress_bar_main.progress(25, text="ℹ️ Skipping GitHub repository fetch...")
+             time.sleep(0.5) # Small delay
+
+        # Step 2: Prepare data (Resume already loaded)
+        status_text_main.text("⚙️ Preparing data for analysis...")
+        progress_bar_main.progress(50, text="⚙️ Preparing data for analysis...")
+        time.sleep(0.2)
+
+        # Step 3: Call Gemini API
+        status_text_main.text("🧠 Analyzing with Gemini AI...")
+        progress_bar_main.progress(75, text="🧠 Analyzing with Gemini AI...")
+        analysis_result_main = answer_with_gemini(
+            github_data_main if isinstance(github_data_main, list) else [], # Ensure it's a list
+            resume_text_main,
+            question_input,
+            job_role_input,
+            company_name_input,
+            job_description_input,
+        )
+        # Step 4: Display results
+        status_text_main.text("✨ Analysis complete. Preparing results...")
+        progress_bar_main.progress(100, text="✨ Analysis complete!")
+        time.sleep(0.5)
+        status_text_main.empty()
+        progress_bar_main.empty()
+        st.header(question_input)
+        st.markdown(analysis_result_main)
+
+
+    
 
 # --- Process when form is submitted ---
 if submit_button:
