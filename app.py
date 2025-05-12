@@ -418,10 +418,16 @@ if submit_button:
             status_text_main.text(f"📡 Fetching GitHub repositories for '{github_username_to_fetch}'...")
             progress_bar_main.progress(25, text=f"📡 Fetching GitHub repositories...")
             # Pass the token from session state if available
-            github_data_main = fetch_github_repos(
-                github_username_to_fetch,
-                st.session_state.get("github_pat")
-            )
+            @st.cache_data(ttl=600) # Cache for 10 minutes
+            def cached_fetch_github_repos(username, token):
+                return fetch_github_repos(username, token)
+            github_data_main = cached_fetch_github_repos(github_username_to_fetch,st.session_state.get("github_pat"))
+            if not github_data_main:
+                print("using non cached repo data")
+                github_data_main = fetch_github_repos(
+                    github_username_to_fetch,
+                    st.session_state.get("github_pat")
+                )
             # fetch_github_repos handles its own errors/warnings
         else:
              status_text_main.text("ℹ️ Skipping GitHub repository fetch (no username provided).")
